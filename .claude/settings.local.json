@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker info:*)",
+      "Bash(for port:*)",
+      "Bash(do netstat:*)",
+      "Bash(grep -q \":$port.*LISTEN\")",
+      "Bash(echo \"CONFLICT on $port\")",
+      "Bash(echo \"OK: Port $port free\")",
+      "Bash(done)",
+      "Bash(pip install:*)",
+      "Bash(python tests/generate_test_pdf.py)"
+    ]
+  }
+}

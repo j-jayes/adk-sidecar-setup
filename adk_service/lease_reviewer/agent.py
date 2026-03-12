@@ -66,6 +66,8 @@ Common items to check for:
 Write the `summary` field in plain English for a non-legal reader.""",
     output_schema=LeaseInformation,
     output_key="lease_review_result",
+    disallow_transfer_to_parent=True,
+    disallow_transfer_to_peers=True,
 )
 
 # ---------------------------------------------------------------------------

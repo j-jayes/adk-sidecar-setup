@@ -119,12 +119,17 @@ adk-sidecar-setup/
 │   ├── pyproject.toml
 │   └── main.py
 │
-└── frontend/                 # Streamlit UI
-    ├── Dockerfile
-    ├── pyproject.toml
-    ├── app.py
-    └── assets/
-        └── custom.css
+├── frontend/                 # Streamlit UI
+│   ├── Dockerfile
+│   ├── pyproject.toml
+│   ├── app.py
+│   └── assets/
+│       └── custom.css
+│
+└── tests/                    # Integration & end-to-end tests
+    ├── generate_test_pdf.py  # Generates tests/test-lease.pdf with reportlab
+    ├── test_services.sh      # Polls each service until healthy, then smoke-tests
+    └── e2e_test.py           # Uploads a PDF and runs a full review via the API
 ```
 
 ---
@@ -192,7 +197,8 @@ The following items could be developed further depending on requirements:
    For high-throughput use, switch to `docling-serve-cu124` and adjust
    resource limits accordingly.
 
-7. **Tests** – No automated tests are included.  Unit tests for the Pydantic
+7. **Tests** – Basic integration tests are in `tests/` (health checks +
+   end-to-end PDF review via `e2e_test.py`).  Unit tests for the Pydantic
    schemas and the API gateway, plus an ADK eval set, would be natural next
    additions.
 

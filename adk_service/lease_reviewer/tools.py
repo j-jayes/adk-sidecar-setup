@@ -2,10 +2,10 @@
 ADK tools for the lease reviewer agent.
 
 `convert_pdf_to_markdown` sends the uploaded PDF to the Docling sidecar
-and returns the Markdown representation of the document.
+(POST /v1/convert/file) and stores the resulting Markdown in session state
+under the key ``lease_markdown`` for downstream agents to consume.
 """
 
-import os
 from pathlib import Path
 
 import httpx
@@ -22,7 +22,9 @@ def convert_pdf_to_markdown(file_path: str, tool_context: ToolContext) -> dict:
     provided by the user or API (e.g. '/uploads/abc123/lease.pdf').
 
     Args:
-        file_path: Absolute path to the PDF file inside the container.
+        file_path: Path to the PDF file inside the container.  May be
+            absolute (e.g. '/uploads/abc/lease.pdf') or relative, in which
+            case it is resolved against the configured UPLOAD_DIR.
         tool_context: Injected by ADK – provides access to session state.
 
     Returns:
@@ -44,9 +46,8 @@ def convert_pdf_to_markdown(file_path: str, tool_context: ToolContext) -> dict:
     try:
         with resolved.open("rb") as fh:
             response = httpx.post(
-                f"{docling_url}/v1alpha/convert/file",
+                f"{docling_url}/v1/convert/file",
                 files={"files": (resolved.name, fh, "application/pdf")},
-                data={"options": '{"to_formats":["md"]}'},
                 timeout=timeout,
             )
         response.raise_for_status()
@@ -57,19 +58,14 @@ def convert_pdf_to_markdown(file_path: str, tool_context: ToolContext) -> dict:
 
     payload = response.json()
 
-    # Docling-serve response: {"documents": [{"md_content": "...", ...}]}
-    documents = payload.get("documents") or []
-    if not documents:
-        return {"error": "Docling returned no documents in the response."}
-
-    doc = documents[0]
-    md_content: str = doc.get("md_content") or doc.get("content") or ""
+    # Docling-serve v1 response: {"document": {"md_content": "...", ...}, "status": "..."}
+    doc = payload.get("document") or {}
+    md_content: str = doc.get("md_content") or ""
     if not md_content:
         return {"error": "Docling conversion succeeded but returned empty Markdown."}
 
-    # Persist the markdown in session state so other agents can reuse it
-    # without calling Docling again.
+    # Store the Markdown in session state under "lease_markdown" so the
+    # checklist_agent can read it without calling Docling a second time.
     tool_context.state["lease_markdown"] = md_content
-    tool_context.state["lease_file_path"] = str(resolved)
 
     return {"markdown": md_content}

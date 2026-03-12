@@ -11,7 +11,6 @@ GET  /health          – Liveness probe.
 import os
 import uuid
 from pathlib import Path
-from typing import Optional
 
 import httpx
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -66,12 +65,15 @@ class UploadResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-def _adk_run_url() -> str:
-    return f"{ADK_URL}/run"
+_ADK_RUN_URL = f"{ADK_URL}/run"
 
 
 async def _ensure_session(session_id: str, user_id: str) -> None:
-    """Create the ADK session if it does not already exist."""
+    """Ensure an ADK session exists, creating it if necessary.
+
+    The ADK session API does not support upsert, so we GET first and POST
+    only on a 404 to avoid duplicate-session errors.
+    """
     url = f"{ADK_URL}/apps/{APP_NAME}/users/{user_id}/sessions/{session_id}"
     async with httpx.AsyncClient(timeout=30) as client:
         r = await client.get(url)
@@ -94,7 +96,7 @@ async def _run_agent(session_id: str, user_id: str, message: str) -> str:
 
     async with httpx.AsyncClient(timeout=120) as client:
         try:
-            resp = await client.post(_adk_run_url(), json=payload)
+            resp = await client.post(_ADK_RUN_URL, json=payload)
             resp.raise_for_status()
         except httpx.HTTPStatusError as exc:
             raise HTTPException(
@@ -109,7 +111,7 @@ async def _run_agent(session_id: str, user_id: str, message: str) -> str:
 
     events = resp.json()
 
-    # Extract the last agent text response from the event list.
+    # Concatenate all model-role text parts from the event stream.
     reply_parts: list[str] = []
     for event in events:
         content = event.get("content") or {}
