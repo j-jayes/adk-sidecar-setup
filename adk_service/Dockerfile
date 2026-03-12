@@ -15,5 +15,5 @@ RUN uv sync --no-dev
 # Expose ADK API server port
 EXPOSE 8000
 
-# Run the ADK API server pointing at /app (discovers lease_reviewer module)
-CMD ["uv", "run", "adk", "api_server", "--host", "0.0.0.0", "--port", "8000", "/app"]
+# Run the ADK web server (includes built-in dev UI + API server)
+CMD ["uv", "run", "adk", "web", "--host", "0.0.0.0", "--port", "8000", "/app"]

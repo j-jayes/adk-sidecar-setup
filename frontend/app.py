@@ -9,7 +9,9 @@ The app communicates with the FastAPI gateway (api service), which in turn
 routes requests to the Google ADK agent backend.
 """
 
+import json
 import os
+import re
 import uuid
 from pathlib import Path
 
@@ -89,6 +91,26 @@ def _upload_pdf(file_bytes: bytes, filename: str) -> str:
     return resp.json()["file_path"]
 
 
+_JSON_BLOCK_RE = re.compile(r"```json\s*(\{.*?\})\s*```", re.DOTALL)
+
+
+def _render_assistant_message(content: str) -> None:
+    """Render an assistant message, pulling any fenced JSON block into a
+    collapsed expander so the prose and structured data are displayed
+    separately."""
+    match = _JSON_BLOCK_RE.search(content)
+    if match:
+        prose = (content[: match.start()] + content[match.end() :]).strip()
+        st.markdown(prose)
+        with st.expander("📋 Structured lease data", expanded=False):
+            try:
+                st.json(json.loads(match.group(1)))
+            except json.JSONDecodeError:
+                st.code(match.group(1), language="json")
+    else:
+        st.markdown(content)
+
+
 # ---------------------------------------------------------------------------
 # Sidebar
 # ---------------------------------------------------------------------------
@@ -160,7 +182,10 @@ st.caption(
 # Render chat history
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+        if msg["role"] == "assistant":
+            _render_assistant_message(msg["content"])
+        else:
+            st.markdown(msg["content"])
 
 # Chat input
 if prompt := st.chat_input("Ask a question about your lease…"):
@@ -177,6 +202,6 @@ if prompt := st.chat_input("Ask a question about your lease…"):
             except httpx.RequestError as exc:
                 reply = f"⚠️ Cannot reach the API service: {exc}"
 
-        st.markdown(reply)
+        _render_assistant_message(reply)
 
     st.session_state.messages.append({"role": "assistant", "content": reply})

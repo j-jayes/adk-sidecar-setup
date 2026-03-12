@@ -4,23 +4,27 @@ Lease Reviewer agents.
 Architecture
 ------------
 root_agent (orchestrator / LlmAgent)
-└── checklist_agent (sub-agent / LlmAgent with structured output)
+└── checklist_agent (sub-agent / LlmAgent)
+    defined in sub_agents/checklist_agent/agent.py
 
 Flow
 ----
 1. User uploads a PDF lease and says "please review this lease".
-2. The orchestrator calls `convert_pdf_to_markdown` with the file path.
-3. The orchestrator delegates to `checklist_agent` with the Markdown text.
-4. `checklist_agent` extracts structured data (LeaseInformation schema)
-   and reports missing items back to the orchestrator.
-5. The orchestrator presents a clear, friendly summary to the user.
+2. root_agent calls `convert_pdf_to_markdown` to convert the PDF via Docling.
+3. root_agent transfers to checklist_agent.
+4. checklist_agent reads `lease_markdown` from session state, produces a
+   human-readable review, and appends the extracted data as a JSON code block.
+
+Note: ADK ends the agent turn after the sub-agent responds, so checklist_agent
+is responsible for the complete final reply (prose + structured JSON).
+The orchestrator's job is only to trigger the pipeline.
 """
 
 from google.adk.agents import LlmAgent
 from google.adk.models.lite_llm import LiteLlm
 
-from .schemas import LeaseInformation
 from .settings import settings
+from .sub_agents.checklist_agent.agent import checklist_agent
 from .tools import convert_pdf_to_markdown
 
 # ---------------------------------------------------------------------------
@@ -29,80 +33,31 @@ from .tools import convert_pdf_to_markdown
 _model = LiteLlm(model=settings.agent_model)
 
 # ---------------------------------------------------------------------------
-# Checklist sub-agent
-# Receives the lease Markdown via its instruction + session state,
-# extracts structured information, and flags missing items.
-# ---------------------------------------------------------------------------
-checklist_agent = LlmAgent(
-    name="checklist_agent",
-    model=_model,
-    description=(
-        "Analyses a lease document in Markdown format, extracts key details "
-        "according to a structured schema, and flags any missing or unusual clauses."
-    ),
-    instruction="""You are a specialist lease-document reviewer.
-
-The lease document text is available in session state under the key
-`lease_markdown`.  Read it carefully and populate every field you can
-find in the output schema.
-
-For the `missing_items` field list every important item that a standard
-residential lease should contain but that is absent from this document.
-Common items to check for:
-- Full names of all tenants
-- Landlord name and contact address
-- Property address
-- Lease start and end dates (or statement that it is periodic)
-- Monthly rent amount and due date
-- Security deposit amount and deposit protection scheme
-- Notice period for termination
-- Inventory or check-in report reference
-- Permitted use clause
-- Subletting restrictions
-- Pets policy
-- Repair and maintenance responsibilities
-- Break clause (if fixed term)
-
-Write the `summary` field in plain English for a non-legal reader.""",
-    output_schema=LeaseInformation,
-    output_key="lease_review_result",
-    disallow_transfer_to_parent=True,
-    disallow_transfer_to_peers=True,
-)
-
-# ---------------------------------------------------------------------------
 # Orchestrator / root agent
 # ---------------------------------------------------------------------------
 root_agent = LlmAgent(
     name="lease_reviewer_orchestrator",
     model=_model,
-    description="Orchestrates the lease review workflow end-to-end.",
-    instruction="""You are a friendly and knowledgeable tenancy advisor.
-
-Your job is to help the user review their residential lease agreement.
+    description="Orchestrates the lease review pipeline end-to-end.",
+    instruction="""You are a friendly tenancy advisor helping users review their
+residential lease agreement.
 
 ## Workflow
 
 1. **Greet the user** and ask them to upload their lease PDF if they have
    not already done so.
 
-2. **When the user mentions a file path or says they have uploaded a file**,
-   call `convert_pdf_to_markdown` with that file path to extract the text.
-   The file path will look like `/uploads/<filename>.pdf`.
+2. **When the user provides a file path**, call `convert_pdf_to_markdown` with
+   that path. The file path will look like `/uploads/<uuid>/<filename>.pdf`.
 
-3. **After successful conversion**, transfer to `checklist_agent` so it can
-   perform the detailed review and extract the structured information.
-
-4. **Present the results** to the user in a clear, readable format:
-   - Summarise the key details found (parties, dates, rent, deposit).
-   - Highlight any **missing items** with ⚠️ emoji.
-   - Give a brief plain-English `summary`.
-   - Offer to answer follow-up questions.
+3. **After successful conversion**, transfer to `checklist_agent`. It will
+   produce the complete review reply for the user — do not add any further
+   text yourself after the transfer.
 
 ## Important notes
-- Be warm and approachable – many tenants are not legal experts.
 - If the conversion fails, explain the error and ask the user to try again.
-- Do not invent information; only report what is in the document.""",
+- For follow-up questions after a review, answer them directly without
+  re-converting the PDF (the Markdown is already in session state).""",
     sub_agents=[checklist_agent],
     tools=[convert_pdf_to_markdown],
 )
