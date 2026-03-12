@@ -1,0 +1,105 @@
+# =============================================================================
+# Lease Reviewer - Docker Compose Configuration
+# =============================================================================
+# Prerequisites:
+#   1. Copy .env.example to .env and add your GOOGLE_API_KEY
+#   2. Create the shared uploads directory: mkdir -p uploads
+#
+# Services:
+#   - docling  (port 5001): PDF → Markdown conversion sidecar
+#   - adk      (port 8000): Google ADK agent API server
+#   - api      (port 8001): FastAPI gateway between frontend and ADK
+#   - frontend (port 8501): Streamlit web UI
+# =============================================================================
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # Docling: PDF → Markdown conversion sidecar
+  # Exposes a REST API; ADK tools call it to pre-process uploaded PDFs.
+  # ---------------------------------------------------------------------------
+  docling:
+    image: quay.io/docling-project/docling-serve-cpu:latest
+    container_name: docling
+    environment:
+      DOCLING_SERVE_ENABLE_UI: "0"
+      OMP_NUM_THREADS: "2"
+      DOCLING_SERVE_DOCUMENT_TIMEOUT: "300"
+      DOCLING_SERVE_LOG_LEVEL: "INFO"
+      DOCLING_SERVE_LOAD_MODELS_AT_BOOT: "1"
+    ports:
+      - "5001:5001"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 4G
+        reservations:
+          cpus: "0.5"
+          memory: 1G
+
+  # ---------------------------------------------------------------------------
+  # ADK: Google Agent Development Kit API server
+  # Hosts the orchestrator agent + checklist sub-agent.
+  # ---------------------------------------------------------------------------
+  adk:
+    build:
+      context: ./adk_service
+      dockerfile: Dockerfile
+    container_name: adk
+    env_file:
+      - .env
+    environment:
+      DOCLING_URL: http://docling:5001
+      UPLOAD_DIR: /uploads
+    volumes:
+      - ./uploads:/uploads
+    ports:
+      - "8000:8000"
+    depends_on:
+      docling:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # API: FastAPI gateway
+  # Handles file uploads, session management, and proxies chat to ADK.
+  # ---------------------------------------------------------------------------
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: api
+    environment:
+      ADK_URL: http://adk:8000
+      UPLOAD_DIR: /uploads
+    volumes:
+      - ./uploads:/uploads
+    ports:
+      - "8001:8001"
+    depends_on:
+      - adk
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Frontend: Streamlit web UI
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: frontend
+    environment:
+      API_URL: http://api:8001
+    ports:
+      - "8501:8501"
+    depends_on:
+      - api
+    restart: unless-stopped
