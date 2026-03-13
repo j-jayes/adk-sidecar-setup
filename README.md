@@ -207,6 +207,35 @@ The following items could be developed further depending on requirements:
 
 ---
 
+<<<<<<< HEAD
+=======
+## Architecture presentation (Quarto RevealJS)
+
+The repository includes a slide deck for onboarding and demo walkthroughs:
+
+- Source: `docs/index.qmd`
+- Rendered output: `docs/index.html`
+- Frontend screenshots: `docs/assets/screenshots/`
+- Screenshot capture helper (R/webshot2): `docs/scripts/capture_screenshots.R`
+
+Render locally:
+
+```bash
+quarto render docs/index.qmd
+```
+
+Publish to GitHub Pages:
+
+```bash
+quarto publish gh-pages docs/index.qmd --no-browser
+```
+
+If this is the first publish for the repository, ensure a `gh-pages` branch
+exists on the remote before running the publish command.
+
+---
+
+>>>>>>> gh-pages
 ## Licence
 
 Apache 2.0 – see [LICENSE](LICENSE).
